@@ -1,152 +1,201 @@
 -- Сервисы Roblox
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
-local CoreGui = game:GetService("CoreGui")
+local PlayerGui = game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui")
+local Camera = workspace.CurrentCamera
 local LocalPlayer = Players.LocalPlayer
 
-_G.FlingEnabled = false
-local heartbeatConnection = nil
+_G.MobileNoclip = false
+local noclipConnection = nil
+local flyConnection = nil
 
--- Функция для безопасного и мощного флинга
-local function toggleFling(state)
-    _G.FlingEnabled = state
-    
+local FLY_SPEED = 40 -- Оптимальная скорость для мобилок
+
+-- Переменные для вертикального полета
+local moveUp = false
+local moveDown = false
+
+-- Функция работы Noclip + Fly
+local function toggleMobileNoclip(state)
+    _G.MobileNoclip = state
     local character = LocalPlayer.Character
+    local humanoid = character Tactics and character:FindFirstChildOfClass("Humanoid")
     local rootPart = character and character:FindFirstChild("HumanoidRootPart")
-    local humanoid = character and character:FindFirstChildOfClass("Humanoid")
     
     if not state then
-        if heartbeatConnection then heartbeatConnection:Disconnect() end
-        if rootPart then
-            for _, v in ipairs(rootPart:GetChildren()) do
-                if v.Name == "StableFling" or v.Name == "FlingForce" then v:Destroy() end
-            end
-        end
+        if noclipConnection then noclipConnection:Disconnect() end
+        if flyConnection then flyConnection:Disconnect() end
+        if humanoid then humanoid.PlatformStand = false end
+        if rootPart then rootPart.Velocity = Vector3.new(0, 0, 0) end
         return
     end
     
-    if character and rootPart and humanoid then
-        -- Настройка физики вращения (используем более стабильный вектор)
-        local bg = Instance.new("BodyAngularVelocity")
-        bg.Name = "FlingForce"
-        bg.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
-        bg.AngularVelocity = Vector3.new(0, 999999, 0) -- Экстремальная скорость
-        bg.Parent = rootPart
+    if character and humanoid and rootPart then
+        humanoid.PlatformStand = true
         
-        -- Фиксатор высоты (чтобы не улетать вверх/вниз)
-        local bp = Instance.new("BodyPosition")
-        bp.Name = "StableFling"
-        bp.MaxForce = Vector3.new(0, math.huge, 0) -- Держит только высоту
-        bp.Position = Vector3.new(0, rootPart.Position.Y, 0)
-        bp.Parent = rootPart
-
-        -- Запоминаем стартовую высоту перед включением
-        local startY = rootPart.Position.Y
-
-        if heartbeatConnection then heartbeatConnection:Disconnect() end
-        heartbeatConnection = RunService.Heartbeat:Connect(function()
-            local curChar = LocalPlayer.Character
-            local curRoot = curChar tactics and curChar:FindFirstChild("HumanoidRootPart")
-            
-            if not curChar or not curRoot or not _G.FlingEnabled then return end
-            
-            -- Обновляем стабильную высоту по ходу движения (чтобы можно было ходить по лестницам)
-            if humanoid.MoveDirection.Magnitude > 0 then
-                bp.Position = Vector3.new(0, curRoot.Position.Y, 0)
-            else
-                bp.Position = Vector3.new(0, startY, 0)
-            end
-
-            -- Ломаем коллизию персонажа, КРОМЕ возможности ходить по земле
-            for _, part in ipairs(curChar:GetChildren()) do
+        -- Коллизия стен (Stepped для защиты от багов)
+        if noclipConnection then noclipConnection:Disconnect() end
+        noclipConnection = RunService.Stepped:Connect(function()
+            if not _G.MobileNoclip or not LocalPlayer.Character then return end
+            for _, part in ipairs(LocalPlayer.Character:GetChildren()) do
                 if part:IsA("BasePart") then
                     part.CanCollide = false
-                    -- Создаем "агрессивную" физику для передачи импульса другим игрокам
-                    part.Velocity = Vector3.new(randomVelocity(), 0, randomVelocity())
                 end
             end
+        end)
+        
+        -- Полет по направлению мобильного джойстика
+        if flyConnection then flyConnection:Disconnect() end
+        flyConnection = RunService.RenderStepped:Connect(function()
+            local curChar = LocalPlayer.Character
+            local curRoot = curChar and curChar:FindFirstChild("HumanoidRootPart")
+            local curHum = curChar and curChar:FindFirstChildOfClass("Humanoid")
             
-            -- Принудительно забираем Network Ownership на хитбоксы врагов рядом
-            for _, player in ipairs(Players:GetPlayers()) do
-                if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
-                    local enemyRoot = player.Character.HumanoidRootPart
-                    local distance = (curRoot.Position - enemyRoot.Position).Magnitude
-                    
-                    -- Если враг близко, создаем микро-толчок в его сторону на уровне сетевого кода
-                    if distance < 8 then
-                        curRoot.Velocity = (enemyRoot.Position - curRoot.Position).Unit * 45
-                    end
-                end
+            if not curChar or not curRoot or not _G.MobileNoclip then return end
+            curHum.PlatformStand = true
+            
+            -- Получаем вектор движения от мобильного джойстика игрока
+            local moveDirection = curHum.MoveDirection
+            local velocityVector = moveDirection * FLY_SPEED
+            
+            -- Добавляем вертикальное движение от созданных кнопок
+            local verticalSpeed = 0
+            if moveUp then
+                verticalSpeed = FLY_SPEED
+            elseif moveDown then
+                verticalSpeed = -FLY_SPEED
+            end
+            
+            curRoot.Velocity = Vector3.new(velocityVector.X, verticalSpeed ~= 0 and verticalSpeed or curRoot.Velocity.Y, velocityVector.Z)
+            
+            -- Если джойстик и кнопки не трогаются — намертво зависаем в воздухе
+            if moveDirection.Magnitude == 0 and not moveUp and not moveDown then
+                curRoot.Velocity = Vector3.new(0, 0, 0)
             end
         end)
     end
 end
 
--- Вспомогательная функция для дестабилизации физики цели
-function randomVelocity()
-    return math.random(1, 2) == 1 and 35 or -35
+-- ========================================================
+-- КРУТОЙ НЕОНОВЫЙ UI ИНТЕРФЕЙС ДЛЯ СМАРТФОНОВ
+-- ========================================================
+
+if PlayerGui:FindFirstChild("MobileNoclipGui") then 
+    PlayerGui.MobileNoclipGui:Destroy() 
 end
 
--- ==========================================
--- GUI МЕНЮ (ИСПРАВЛЕННОЕ)
--- ==========================================
-if CoreGui:FindFirstChild("FlingMenuGui") then CoreGui.FlingMenuGui:Destroy() end
-
 local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "FlingMenuGui"
+ScreenGui.Name = "MobileNoclipGui"
 ScreenGui.ResetOnSpawn = false
--- Авто-выбор родителя (если CoreGui заблокирован экзекьютором)
-local success, _ = pcall(function() ScreenGui.Parent = CoreGui end)
-if not success then ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui") end
+ScreenGui.Parent = PlayerGui
 
+-- Главное Окно меню
 local MainFrame = Instance.new("Frame")
-MainFrame.Size = UDim2.new(0, 220, 0, 130)
-MainFrame.Position = UDim2.new(0.5, -110, 0.4, -65)
-MainFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+MainFrame.Name = "MainFrame"
+MainFrame.Size = UDim2.new(0, 240, 0, 150)
+MainFrame.Position = UDim2.new(0.1, 0, 0.2, 0) -- Удобное место слева на смартфонах
+MainFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
 MainFrame.BorderSizePixel = 0
 MainFrame.Active = true
-MainFrame.Draggable = true
+MainFrame.Draggable = true -- Можно перетаскивать пальцем за любую часть окна
 MainFrame.Parent = ScreenGui
 
-local MainCorner = Instance.new("UICorner")
-MainCorner.CornerRadius = UDim.new(0, 8)
-MainCorner.Parent = MainFrame
+local FrameCorner = Instance.new("UICorner")
+FrameCorner.CornerRadius = UDim.new(0, 12)
+FrameCorner.Parent = MainFrame
 
+-- Неоновая обводка (Glow)
+local UIStroke = Instance.new("UIStroke")
+UIStroke.Color = Color3.fromRGB(0, 170, 255) -- Голубой неон
+UIStroke.Thickness = 2
+UIStroke.Parent = MainFrame
+
+-- Заголовок
 local Title = Instance.new("TextLabel")
-Title.Size = UDim2.new(1, 0, 0, 35)
-Title.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-Title.Text = "Touch Fling FIX"
+Title.Size = UDim2.new(1, 0, 0, 40)
+Title.BackgroundColor3 = Color3.fromRGB(22, 22, 30)
+Title.Text = "⚡ NOCLIP MOBILE ⚡"
 Title.TextColor3 = Color3.fromRGB(255, 255, 255)
 Title.TextSize = 16
-Title.Font = Enum.Font.SourceSansBold
+Title.Font = Enum.Font.GothamBold
 Title.Parent = MainFrame
 
+local TitleCorner = Instance.new("UICorner")
+TitleCorner.CornerRadius = UDim.new(0, 12)
+TitleCorner.Parent = Title
+
+-- Основная кнопка мода (Вкл/Выкл)
 local ToggleButton = Instance.new("TextButton")
-ToggleButton.Size = UDim2.new(0, 180, 0, 45)
-ToggleButton.Position = UDim2.new(0.5, -90, 0.5, -5)
-ToggleButton.BackgroundColor3 = Color3.fromRGB(180, 40, 40)
-ToggleButton.Text = "FLING: OFF"
+ToggleButton.Size = UDim2.new(0, 200, 0, 50)
+ToggleButton.Position = UDim2.new(0.5, -100, 0.5, 0)
+ToggleButton.BackgroundColor3 = Color3.fromRGB(230, 50, 50)
+ToggleButton.Text = "NOCLIP: OFF"
 ToggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 ToggleButton.TextSize = 18
-ToggleButton.Font = Enum.Font.SourceSansBold
+ToggleButton.Font = Enum.Font.GothamBold
 ToggleButton.Parent = MainFrame
 
 local ButtonCorner = Instance.new("UICorner")
-ButtonCorner.CornerRadius = UDim.new(0, 6)
+ButtonCorner.CornerRadius = UDim.new(0, 8)
 ButtonCorner.Parent = ToggleButton
 
+-- Логика переключения кнопки
 ToggleButton.MouseButton1Click:Connect(function()
-    if _G.FlingEnabled then
-        toggleFling(false)
-        ToggleButton.Text = "FLING: OFF"
-        ToggleButton.BackgroundColor3 = Color3.fromRGB(180, 40, 40)
+    if _G.MobileNoclip then
+        toggleMobileNoclip(false)
+        ToggleButton.Text = "NOCLIP: OFF"
+        ToggleButton.BackgroundColor3 = Color3.fromRGB(230, 50, 50)
+        UIStroke.Color = Color3.fromRGB(0, 170, 255)
+        ScreenGui:FindFirstChild("FlyControls"):Destroy() -- Удаляем мобильные кнопки высоты
     else
-        toggleFling(true)
-        ToggleButton.Text = "FLING: ON"
-        ToggleButton.BackgroundColor3 = Color3.fromRGB(40, 180, 40)
+        toggleMobileNoclip(true)
+        ToggleButton.Text = "NOCLIP: ACTIVE"
+        ToggleButton.BackgroundColor3 = Color3.fromRGB(50, 210, 100)
+        UIStroke.Color = Color3.fromRGB(50, 210, 100) -- Зеленый неон при работе
+        
+        -- СРАЗУ СОЗДАЕМ МОБИЛЬНЫЕ КНОПКИ ВЫСОТЫ СПРАВА
+        local ControlsFrame = Instance.new("Frame")
+        ControlsFrame.Name = "FlyControls"
+        ControlsFrame.Size = UDim2.new(0, 70, 0, 160)
+        ControlsFrame.Position = UDim2.new(0.85, 0, 0.4, 0) -- Справа, прямо под большой палец правой руки
+        ControlsFrame.BackgroundTransparency = 1
+        ControlsFrame.Parent = ScreenGui
+        
+        -- Кнопка ВВЕРХ
+        local UpBtn = Instance.new("TextButton")
+        UpBtn.Size = UDim2.new(1, 0, 0, 70)
+        UpBtn.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
+        UpBtn.Text = "▲"
+        UpBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+        UpBtn.TextSize = 25
+        UpBtn.Parent = ControlsFrame
+        Instance.new("UICorner", UpBtn).CornerRadius = UDim.new(0, 35)
+        local s1 = Instance.new("UIStroke", UpBtn) s1.Color = Color3.fromRGB(50, 210, 100) s1.Thickness = 1
+        
+        -- Кнопка ВНИЗ
+        local DownBtn = Instance.new("TextButton")
+        DownBtn.Size = UDim2.new(1, 0, 0, 70)
+        DownBtn.Position = UDim2.new(0, 0, 0, 90)
+        DownBtn.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
+        DownBtn.Text = "▼"
+        DownBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+        DownBtn.TextSize = 25
+        DownBtn.Parent = ControlsFrame
+        Instance.new("UICorner", DownBtn).CornerRadius = UDim.new(0, 35)
+        local s2 = Instance.new("UIStroke", DownBtn) s2.Color = Color3.fromRGB(50, 210, 100) s2.Thickness = 1
+        
+        -- Считывание зажатий для сенсорного экрана
+        UpBtn.MouseButton1Down:Connect(function() moveUp = true end)
+        UpBtn.MouseButton1Up:Connect(function() moveUp = false end)
+        DownBtn.MouseButton1Down:Connect(function() moveDown = true end)
+        DownBtn.MouseButton1Up:Connect(function() moveDown = false end)
     end
 end)
 
+-- Авто-подгрузка при возрождении
 LocalPlayer.CharacterAdded:Connect(function()
-    if _G.FlingEnabled then task.wait(0.5) toggleFling(true) end
+    if _G.MobileNoclip then 
+        task.wait(0.5) 
+        toggleMobileNoclip(true) 
+    end
 end)
