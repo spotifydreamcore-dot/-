@@ -1,201 +1,53 @@
--- Сервисы Roblox
+-- Упрощенный и принудительный скрипт Noclip
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
-local PlayerGui = game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui")
-local Camera = workspace.CurrentCamera
 local LocalPlayer = Players.LocalPlayer
+local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
 
-_G.MobileNoclip = false
-local noclipConnection = nil
-local flyConnection = nil
+-- Удаляем старое, если оно было
+if PlayerGui:FindFirstChild("NoclipGui") then PlayerGui.NoclipGui:Destroy() end
 
-local FLY_SPEED = 40 -- Оптимальная скорость для мобилок
+-- Создаем интерфейс
+local ScreenGui = Instance.new("ScreenGui", PlayerGui)
+ScreenGui.Name = "NoclipGui"
+ScreenGui.IgnoreGuiInset = true
 
--- Переменные для вертикального полета
-local moveUp = false
-local moveDown = false
+local Frame = Instance.new("Frame", ScreenGui)
+Frame.Size = UDim2.new(0, 200, 0, 100)
+Frame.Position = UDim2.new(0.5, -100, 0.5, -50)
+Frame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+Frame.Active = true
+Frame.Draggable = true
 
--- Функция работы Noclip + Fly
-local function toggleMobileNoclip(state)
-    _G.MobileNoclip = state
-    local character = LocalPlayer.Character
-    local humanoid = character Tactics and character:FindFirstChildOfClass("Humanoid")
-    local rootPart = character and character:FindFirstChild("HumanoidRootPart")
-    
-    if not state then
-        if noclipConnection then noclipConnection:Disconnect() end
-        if flyConnection then flyConnection:Disconnect() end
-        if humanoid then humanoid.PlatformStand = false end
-        if rootPart then rootPart.Velocity = Vector3.new(0, 0, 0) end
-        return
-    end
-    
-    if character and humanoid and rootPart then
-        humanoid.PlatformStand = true
-        
-        -- Коллизия стен (Stepped для защиты от багов)
-        if noclipConnection then noclipConnection:Disconnect() end
-        noclipConnection = RunService.Stepped:Connect(function()
-            if not _G.MobileNoclip or not LocalPlayer.Character then return end
-            for _, part in ipairs(LocalPlayer.Character:GetChildren()) do
-                if part:IsA("BasePart") then
-                    part.CanCollide = false
-                end
+local Button = Instance.new("TextButton", Frame)
+Button.Size = UDim2.new(1, 0, 1, 0)
+Button.Text = "NOCLIP: OFF"
+Button.TextColor3 = Color3.new(1,1,1)
+Button.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+Button.Font = Enum.Font.SourceSansBold
+Button.TextSize = 24
+
+local NoclipOn = false
+
+-- Логика Noclip
+RunService.Stepped:Connect(function()
+    if NoclipOn and LocalPlayer.Character then
+        for _, part in pairs(LocalPlayer.Character:GetDescendants()) do
+            if part:IsA("BasePart") then
+                part.CanCollide = false
             end
-        end)
-        
-        -- Полет по направлению мобильного джойстика
-        if flyConnection then flyConnection:Disconnect() end
-        flyConnection = RunService.RenderStepped:Connect(function()
-            local curChar = LocalPlayer.Character
-            local curRoot = curChar and curChar:FindFirstChild("HumanoidRootPart")
-            local curHum = curChar and curChar:FindFirstChildOfClass("Humanoid")
-            
-            if not curChar or not curRoot or not _G.MobileNoclip then return end
-            curHum.PlatformStand = true
-            
-            -- Получаем вектор движения от мобильного джойстика игрока
-            local moveDirection = curHum.MoveDirection
-            local velocityVector = moveDirection * FLY_SPEED
-            
-            -- Добавляем вертикальное движение от созданных кнопок
-            local verticalSpeed = 0
-            if moveUp then
-                verticalSpeed = FLY_SPEED
-            elseif moveDown then
-                verticalSpeed = -FLY_SPEED
-            end
-            
-            curRoot.Velocity = Vector3.new(velocityVector.X, verticalSpeed ~= 0 and verticalSpeed or curRoot.Velocity.Y, velocityVector.Z)
-            
-            -- Если джойстик и кнопки не трогаются — намертво зависаем в воздухе
-            if moveDirection.Magnitude == 0 and not moveUp and not moveDown then
-                curRoot.Velocity = Vector3.new(0, 0, 0)
-            end
-        end)
-    end
-end
-
--- ========================================================
--- КРУТОЙ НЕОНОВЫЙ UI ИНТЕРФЕЙС ДЛЯ СМАРТФОНОВ
--- ========================================================
-
-if PlayerGui:FindFirstChild("MobileNoclipGui") then 
-    PlayerGui.MobileNoclipGui:Destroy() 
-end
-
-local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "MobileNoclipGui"
-ScreenGui.ResetOnSpawn = false
-ScreenGui.Parent = PlayerGui
-
--- Главное Окно меню
-local MainFrame = Instance.new("Frame")
-MainFrame.Name = "MainFrame"
-MainFrame.Size = UDim2.new(0, 240, 0, 150)
-MainFrame.Position = UDim2.new(0.1, 0, 0.2, 0) -- Удобное место слева на смартфонах
-MainFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
-MainFrame.BorderSizePixel = 0
-MainFrame.Active = true
-MainFrame.Draggable = true -- Можно перетаскивать пальцем за любую часть окна
-MainFrame.Parent = ScreenGui
-
-local FrameCorner = Instance.new("UICorner")
-FrameCorner.CornerRadius = UDim.new(0, 12)
-FrameCorner.Parent = MainFrame
-
--- Неоновая обводка (Glow)
-local UIStroke = Instance.new("UIStroke")
-UIStroke.Color = Color3.fromRGB(0, 170, 255) -- Голубой неон
-UIStroke.Thickness = 2
-UIStroke.Parent = MainFrame
-
--- Заголовок
-local Title = Instance.new("TextLabel")
-Title.Size = UDim2.new(1, 0, 0, 40)
-Title.BackgroundColor3 = Color3.fromRGB(22, 22, 30)
-Title.Text = "⚡ NOCLIP MOBILE ⚡"
-Title.TextColor3 = Color3.fromRGB(255, 255, 255)
-Title.TextSize = 16
-Title.Font = Enum.Font.GothamBold
-Title.Parent = MainFrame
-
-local TitleCorner = Instance.new("UICorner")
-TitleCorner.CornerRadius = UDim.new(0, 12)
-TitleCorner.Parent = Title
-
--- Основная кнопка мода (Вкл/Выкл)
-local ToggleButton = Instance.new("TextButton")
-ToggleButton.Size = UDim2.new(0, 200, 0, 50)
-ToggleButton.Position = UDim2.new(0.5, -100, 0.5, 0)
-ToggleButton.BackgroundColor3 = Color3.fromRGB(230, 50, 50)
-ToggleButton.Text = "NOCLIP: OFF"
-ToggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-ToggleButton.TextSize = 18
-ToggleButton.Font = Enum.Font.GothamBold
-ToggleButton.Parent = MainFrame
-
-local ButtonCorner = Instance.new("UICorner")
-ButtonCorner.CornerRadius = UDim.new(0, 8)
-ButtonCorner.Parent = ToggleButton
-
--- Логика переключения кнопки
-ToggleButton.MouseButton1Click:Connect(function()
-    if _G.MobileNoclip then
-        toggleMobileNoclip(false)
-        ToggleButton.Text = "NOCLIP: OFF"
-        ToggleButton.BackgroundColor3 = Color3.fromRGB(230, 50, 50)
-        UIStroke.Color = Color3.fromRGB(0, 170, 255)
-        ScreenGui:FindFirstChild("FlyControls"):Destroy() -- Удаляем мобильные кнопки высоты
-    else
-        toggleMobileNoclip(true)
-        ToggleButton.Text = "NOCLIP: ACTIVE"
-        ToggleButton.BackgroundColor3 = Color3.fromRGB(50, 210, 100)
-        UIStroke.Color = Color3.fromRGB(50, 210, 100) -- Зеленый неон при работе
-        
-        -- СРАЗУ СОЗДАЕМ МОБИЛЬНЫЕ КНОПКИ ВЫСОТЫ СПРАВА
-        local ControlsFrame = Instance.new("Frame")
-        ControlsFrame.Name = "FlyControls"
-        ControlsFrame.Size = UDim2.new(0, 70, 0, 160)
-        ControlsFrame.Position = UDim2.new(0.85, 0, 0.4, 0) -- Справа, прямо под большой палец правой руки
-        ControlsFrame.BackgroundTransparency = 1
-        ControlsFrame.Parent = ScreenGui
-        
-        -- Кнопка ВВЕРХ
-        local UpBtn = Instance.new("TextButton")
-        UpBtn.Size = UDim2.new(1, 0, 0, 70)
-        UpBtn.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
-        UpBtn.Text = "▲"
-        UpBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-        UpBtn.TextSize = 25
-        UpBtn.Parent = ControlsFrame
-        Instance.new("UICorner", UpBtn).CornerRadius = UDim.new(0, 35)
-        local s1 = Instance.new("UIStroke", UpBtn) s1.Color = Color3.fromRGB(50, 210, 100) s1.Thickness = 1
-        
-        -- Кнопка ВНИЗ
-        local DownBtn = Instance.new("TextButton")
-        DownBtn.Size = UDim2.new(1, 0, 0, 70)
-        DownBtn.Position = UDim2.new(0, 0, 0, 90)
-        DownBtn.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
-        DownBtn.Text = "▼"
-        DownBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-        DownBtn.TextSize = 25
-        DownBtn.Parent = ControlsFrame
-        Instance.new("UICorner", DownBtn).CornerRadius = UDim.new(0, 35)
-        local s2 = Instance.new("UIStroke", DownBtn) s2.Color = Color3.fromRGB(50, 210, 100) s2.Thickness = 1
-        
-        -- Считывание зажатий для сенсорного экрана
-        UpBtn.MouseButton1Down:Connect(function() moveUp = true end)
-        UpBtn.MouseButton1Up:Connect(function() moveUp = false end)
-        DownBtn.MouseButton1Down:Connect(function() moveDown = true end)
-        DownBtn.MouseButton1Up:Connect(function() moveDown = false end)
+        end
     end
 end)
 
--- Авто-подгрузка при возрождении
-LocalPlayer.CharacterAdded:Connect(function()
-    if _G.MobileNoclip then 
-        task.wait(0.5) 
-        toggleMobileNoclip(true) 
+-- Переключатель
+Button.MouseButton1Click:Connect(function()
+    NoclipOn = not NoclipOn
+    if NoclipOn then
+        Button.Text = "NOCLIP: ON"
+        Button.BackgroundColor3 = Color3.fromRGB(50, 200, 50)
+    else
+        Button.Text = "NOCLIP: OFF"
+        Button.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
     end
 end)
