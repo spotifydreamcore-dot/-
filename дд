@@ -4,104 +4,127 @@ local RunService = game:GetService("RunService")
 local CoreGui = game:GetService("CoreGui")
 local LocalPlayer = Players.LocalPlayer
 
--- Флаг состояния флинга
 _G.FlingEnabled = false
 local heartbeatConnection = nil
 
--- Функция включения/выключения физики флинга
+-- Функция для безопасного и мощного флинга
 local function toggleFling(state)
     _G.FlingEnabled = state
     
     local character = LocalPlayer.Character
     local rootPart = character and character:FindFirstChild("HumanoidRootPart")
+    local humanoid = character and character:FindFirstChildOfClass("Humanoid")
     
     if not state then
-        -- Отключаем: убираем скорость и соединение
         if heartbeatConnection then heartbeatConnection:Disconnect() end
-        if rootPart and rootPart:FindFirstChild("FlingVelocity") then
-            rootPart.FlingVelocity:Destroy()
+        if rootPart then
+            for _, v in ipairs(rootPart:GetChildren()) do
+                if v.Name == "StableFling" or v.Name == "FlingForce" then v:Destroy() end
+            end
         end
         return
     end
     
-    -- Включаем: создаем вращение
-    if character and rootPart then
-        if not rootPart:FindFirstChild("FlingVelocity") then
-            local bodyVelocity = Instance.new("BodyAngularVelocity")
-            bodyVelocity.Name = "FlingVelocity"
-            bodyVelocity.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
-            bodyVelocity.AngularVelocity = Vector3.new(0, 99999, 0)
-            bodyVelocity.Parent = rootPart
-        end
+    if character and rootPart and humanoid then
+        -- Настройка физики вращения (используем более стабильный вектор)
+        local bg = Instance.new("BodyAngularVelocity")
+        bg.Name = "FlingForce"
+        bg.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
+        bg.AngularVelocity = Vector3.new(0, 999999, 0) -- Экстремальная скорость
+        bg.Parent = rootPart
         
-        -- Постоянный цикл для отключения коллизии
+        -- Фиксатор высоты (чтобы не улетать вверх/вниз)
+        local bp = Instance.new("BodyPosition")
+        bp.Name = "StableFling"
+        bp.MaxForce = Vector3.new(0, math.huge, 0) -- Держит только высоту
+        bp.Position = Vector3.new(0, rootPart.Position.Y, 0)
+        bp.Parent = rootPart
+
+        -- Запоминаем стартовую высоту перед включением
+        local startY = rootPart.Position.Y
+
         if heartbeatConnection then heartbeatConnection:Disconnect() end
         heartbeatConnection = RunService.Heartbeat:Connect(function()
-            local currentCharacter = LocalPlayer.Character
-            if not currentCharacter or not _G.FlingEnabled then return end
+            local curChar = LocalPlayer.Character
+            local curRoot = curChar tactics and curChar:FindFirstChild("HumanoidRootPart")
             
-            for _, part in ipairs(currentCharacter:GetChildren()) do
+            if not curChar or not curRoot or not _G.FlingEnabled then return end
+            
+            -- Обновляем стабильную высоту по ходу движения (чтобы можно было ходить по лестницам)
+            if humanoid.MoveDirection.Magnitude > 0 then
+                bp.Position = Vector3.new(0, curRoot.Position.Y, 0)
+            else
+                bp.Position = Vector3.new(0, startY, 0)
+            end
+
+            -- Ломаем коллизию персонажа, КРОМЕ возможности ходить по земле
+            for _, part in ipairs(curChar:GetChildren()) do
                 if part:IsA("BasePart") then
                     part.CanCollide = false
-                    part.Velocity = Vector3.new(0, 25, 0)
+                    -- Создаем "агрессивную" физику для передачи импульса другим игрокам
+                    part.Velocity = Vector3.new(randomVelocity(), 0, randomVelocity())
+                end
+            end
+            
+            -- Принудительно забираем Network Ownership на хитбоксы врагов рядом
+            for _, player in ipairs(Players:GetPlayers()) do
+                if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+                    local enemyRoot = player.Character.HumanoidRootPart
+                    local distance = (curRoot.Position - enemyRoot.Position).Magnitude
+                    
+                    -- Если враг близко, создаем микро-толчок в его сторону на уровне сетевого кода
+                    if distance < 8 then
+                        curRoot.Velocity = (enemyRoot.Position - curRoot.Position).Unit * 45
+                    end
                 end
             end
         end)
     end
 end
 
--- ==========================================
--- СОЗДАНИЕ GUI МЕНЮ
--- ==========================================
-
--- Удаляем старое меню, если скрипт запущен повторно
-if CoreGui:FindFirstChild("FlingMenuGui") then
-    CoreGui.FlingMenuGui:Destroy()
+-- Вспомогательная функция для дестабилизации физики цели
+function randomVelocity()
+    return math.random(1, 2) == 1 and 35 or -35
 end
 
--- Основной контейнер UI
+-- ==========================================
+-- GUI МЕНЮ (ИСПРАВЛЕННОЕ)
+-- ==========================================
+if CoreGui:FindFirstChild("FlingMenuGui") then CoreGui.FlingMenuGui:Destroy() end
+
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "FlingMenuGui"
 ScreenGui.ResetOnSpawn = false
-ScreenGui.Parent = CoreGui
+-- Авто-выбор родителя (если CoreGui заблокирован экзекьютором)
+local success, _ = pcall(function() ScreenGui.Parent = CoreGui end)
+if not success then ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui") end
 
--- Главный фрейм (Окно)
 local MainFrame = Instance.new("Frame")
-MainFrame.Name = "MainFrame"
 MainFrame.Size = UDim2.new(0, 220, 0, 130)
 MainFrame.Position = UDim2.new(0.5, -110, 0.4, -65)
-MainFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+MainFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
 MainFrame.BorderSizePixel = 0
 MainFrame.Active = true
-MainFrame.Draggable = true -- Можно перетаскивать мышкой по экрану
+MainFrame.Draggable = true
 MainFrame.Parent = ScreenGui
 
--- Скругление углов для окна
 local MainCorner = Instance.new("UICorner")
 MainCorner.CornerRadius = UDim.new(0, 8)
 MainCorner.Parent = MainFrame
 
--- Заголовок меню
 local Title = Instance.new("TextLabel")
-Title.Name = "Title"
 Title.Size = UDim2.new(1, 0, 0, 35)
-Title.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
-Title.Text = "Touch Fling v2.0"
+Title.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+Title.Text = "Touch Fling FIX"
 Title.TextColor3 = Color3.fromRGB(255, 255, 255)
 Title.TextSize = 16
 Title.Font = Enum.Font.SourceSansBold
 Title.Parent = MainFrame
 
-local TitleCorner = Instance.new("UICorner")
-TitleCorner.CornerRadius = UDim.new(0, 8)
-TitleCorner.Parent = Title
-
--- Кнопка переключения (Toggle)
 local ToggleButton = Instance.new("TextButton")
-ToggleButton.Name = "ToggleButton"
 ToggleButton.Size = UDim2.new(0, 180, 0, 45)
 ToggleButton.Position = UDim2.new(0.5, -90, 0.5, -5)
-ToggleButton.BackgroundColor3 = Color3.fromRGB(180, 40, 40) -- Красный (выключено)
+ToggleButton.BackgroundColor3 = Color3.fromRGB(180, 40, 40)
 ToggleButton.Text = "FLING: OFF"
 ToggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 ToggleButton.TextSize = 18
@@ -112,7 +135,6 @@ local ButtonCorner = Instance.new("UICorner")
 ButtonCorner.CornerRadius = UDim.new(0, 6)
 ButtonCorner.Parent = ToggleButton
 
--- Логика клика по кнопке
 ToggleButton.MouseButton1Click:Connect(function()
     if _G.FlingEnabled then
         toggleFling(false)
@@ -121,14 +143,10 @@ ToggleButton.MouseButton1Click:Connect(function()
     else
         toggleFling(true)
         ToggleButton.Text = "FLING: ON"
-        ToggleButton.BackgroundColor3 = Color3.fromRGB(40, 180, 40) -- Зеленый (включено)
+        ToggleButton.BackgroundColor3 = Color3.fromRGB(40, 180, 40)
     end
 end)
 
--- Авто-перезапуск логики флинга при респавне (если кнопка была активна)
 LocalPlayer.CharacterAdded:Connect(function()
-    if _G.FlingEnabled then
-        task.wait(0.5)
-        toggleFling(true)
-    end
+    if _G.FlingEnabled then task.wait(0.5) toggleFling(true) end
 end)
