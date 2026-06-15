@@ -5,7 +5,7 @@ local CoreGui = game:GetService("CoreGui")
 local LocalPlayer = Players.LocalPlayer
 
 -- Флаг состояния флинга
-local _G.FlingEnabled = false
+_G.FlingEnabled = false
 local heartbeatConnection = nil
 
 -- Функция включения/выключения физики флинга
@@ -25,7 +25,7 @@ local function toggleFling(state)
     end
     
     -- Включаем: создаем вращение
-    if character tactics and rootPart then
+    if character and rootPart then
         if not rootPart:FindFirstChild("FlingVelocity") then
             local bodyVelocity = Instance.new("BodyAngularVelocity")
             bodyVelocity.Name = "FlingVelocity"
