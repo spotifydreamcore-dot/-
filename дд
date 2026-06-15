@@ -1,0 +1,134 @@
+-- Сервисы Roblox
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local CoreGui = game:GetService("CoreGui")
+local LocalPlayer = Players.LocalPlayer
+
+-- Флаг состояния флинга
+local _G.FlingEnabled = false
+local heartbeatConnection = nil
+
+-- Функция включения/выключения физики флинга
+local function toggleFling(state)
+    _G.FlingEnabled = state
+    
+    local character = LocalPlayer.Character
+    local rootPart = character and character:FindFirstChild("HumanoidRootPart")
+    
+    if not state then
+        -- Отключаем: убираем скорость и соединение
+        if heartbeatConnection then heartbeatConnection:Disconnect() end
+        if rootPart and rootPart:FindFirstChild("FlingVelocity") then
+            rootPart.FlingVelocity:Destroy()
+        end
+        return
+    end
+    
+    -- Включаем: создаем вращение
+    if character tactics and rootPart then
+        if not rootPart:FindFirstChild("FlingVelocity") then
+            local bodyVelocity = Instance.new("BodyAngularVelocity")
+            bodyVelocity.Name = "FlingVelocity"
+            bodyVelocity.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
+            bodyVelocity.AngularVelocity = Vector3.new(0, 99999, 0)
+            bodyVelocity.Parent = rootPart
+        end
+        
+        -- Постоянный цикл для отключения коллизии
+        if heartbeatConnection then heartbeatConnection:Disconnect() end
+        heartbeatConnection = RunService.Heartbeat:Connect(function()
+            local currentCharacter = LocalPlayer.Character
+            if not currentCharacter or not _G.FlingEnabled then return end
+            
+            for _, part in ipairs(currentCharacter:GetChildren()) do
+                if part:IsA("BasePart") then
+                    part.CanCollide = false
+                    part.Velocity = Vector3.new(0, 25, 0)
+                end
+            end
+        end)
+    end
+end
+
+-- ==========================================
+-- СОЗДАНИЕ GUI МЕНЮ
+-- ==========================================
+
+-- Удаляем старое меню, если скрипт запущен повторно
+if CoreGui:FindFirstChild("FlingMenuGui") then
+    CoreGui.FlingMenuGui:Destroy()
+end
+
+-- Основной контейнер UI
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "FlingMenuGui"
+ScreenGui.ResetOnSpawn = false
+ScreenGui.Parent = CoreGui
+
+-- Главный фрейм (Окно)
+local MainFrame = Instance.new("Frame")
+MainFrame.Name = "MainFrame"
+MainFrame.Size = UDim2.new(0, 220, 0, 130)
+MainFrame.Position = UDim2.new(0.5, -110, 0.4, -65)
+MainFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+MainFrame.BorderSizePixel = 0
+MainFrame.Active = true
+MainFrame.Draggable = true -- Можно перетаскивать мышкой по экрану
+MainFrame.Parent = ScreenGui
+
+-- Скругление углов для окна
+local MainCorner = Instance.new("UICorner")
+MainCorner.CornerRadius = UDim.new(0, 8)
+MainCorner.Parent = MainFrame
+
+-- Заголовок меню
+local Title = Instance.new("TextLabel")
+Title.Name = "Title"
+Title.Size = UDim2.new(1, 0, 0, 35)
+Title.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+Title.Text = "Touch Fling v2.0"
+Title.TextColor3 = Color3.fromRGB(255, 255, 255)
+Title.TextSize = 16
+Title.Font = Enum.Font.SourceSansBold
+Title.Parent = MainFrame
+
+local TitleCorner = Instance.new("UICorner")
+TitleCorner.CornerRadius = UDim.new(0, 8)
+TitleCorner.Parent = Title
+
+-- Кнопка переключения (Toggle)
+local ToggleButton = Instance.new("TextButton")
+ToggleButton.Name = "ToggleButton"
+ToggleButton.Size = UDim2.new(0, 180, 0, 45)
+ToggleButton.Position = UDim2.new(0.5, -90, 0.5, -5)
+ToggleButton.BackgroundColor3 = Color3.fromRGB(180, 40, 40) -- Красный (выключено)
+ToggleButton.Text = "FLING: OFF"
+ToggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+ToggleButton.TextSize = 18
+ToggleButton.Font = Enum.Font.SourceSansBold
+ToggleButton.Parent = MainFrame
+
+local ButtonCorner = Instance.new("UICorner")
+ButtonCorner.CornerRadius = UDim.new(0, 6)
+ButtonCorner.Parent = ToggleButton
+
+-- Логика клика по кнопке
+ToggleButton.MouseButton1Click:Connect(function()
+    if _G.FlingEnabled then
+        toggleFling(false)
+        ToggleButton.Text = "FLING: OFF"
+        ToggleButton.BackgroundColor3 = Color3.fromRGB(180, 40, 40)
+    else
+        toggleFling(true)
+        ToggleButton.Text = "FLING: ON"
+        ToggleButton.BackgroundColor3 = Color3.fromRGB(40, 180, 40) -- Зеленый (включено)
+    end
+end)
+
+-- Авто-перезапуск логики флинга при респавне (если кнопка была активна)
+LocalPlayer.CharacterAdded:Connect(function()
+    if _G.FlingEnabled then
+        task.wait(0.5)
+        toggleFling(true)
+    end
+end)
