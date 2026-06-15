@@ -1,53 +1,117 @@
--- Упрощенный и принудительный скрипт Noclip
-local Players = game:GetService("Players")
+-- Инициализация сервисов
 local RunService = game:GetService("RunService")
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
 local LocalPlayer = Players.LocalPlayer
-local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
 
--- Удаляем старое, если оно было
-if PlayerGui:FindFirstChild("NoclipGui") then PlayerGui.NoclipGui:Destroy() end
+-- Флаг работы NoClip
+local noclipEnabled = false
 
--- Создаем интерфейс
-local ScreenGui = Instance.new("ScreenGui", PlayerGui)
-ScreenGui.Name = "NoclipGui"
-ScreenGui.IgnoreGuiInset = true
+-- Создание интерфейса (GUI)
+local ScreenGui = Instance.new("ScreenGui")
+local MainFrame = Instance.new("Frame")
+local TitleLabel = Instance.new("TextLabel")
+local ToggleButton = Instance.new("TextButton")
+local UICorner_Frame = Instance.new("UICorner")
+local UICorner_Button = Instance.new("UICorner")
 
-local Frame = Instance.new("Frame", ScreenGui)
-Frame.Size = UDim2.new(0, 200, 0, 100)
-Frame.Position = UDim2.new(0.5, -100, 0.5, -50)
-Frame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-Frame.Active = true
-Frame.Draggable = true
+-- Пытаемся засунуть GUI в CoreGui (чтобы не пропал при смерти), если экзекьютор позволяет. 
+-- Если нет — кидаем в PlayerGui.
+local success, coreGui = pcall(function() return game:GetService("CoreGui") end)
+ScreenGui.Parent = success and coreGui or LocalPlayer:WaitForChild("PlayerGui")
+ScreenGui.Name = "NoClipMenu_ByGemini"
+ScreenGui.ResetOnSpawn = false
 
-local Button = Instance.new("TextButton", Frame)
-Button.Size = UDim2.new(1, 0, 1, 0)
-Button.Text = "NOCLIP: OFF"
-Button.TextColor3 = Color3.new(1,1,1)
-Button.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
-Button.Font = Enum.Font.SourceSansBold
-Button.TextSize = 24
+-- Настройки главного фрейма (Окна)
+MainFrame.Name = "MainFrame"
+MainFrame.Parent = ScreenGui
+MainFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 35)
+MainFrame.Position = UDim2.new(0.1, 0, 0.4, 0)
+MainFrame.Size = UDim2.new(0, 200, 0, 110)
+MainFrame.Active = true
+MainFrame.Selectable = true
 
-local NoclipOn = false
+UICorner_Frame.CornerRadius = UDim.new(0, 10)
+UICorner_Frame.Parent = MainFrame
 
--- Логика Noclip
+-- Заголовок меню
+TitleLabel.Name = "TitleLabel"
+TitleLabel.Parent = MainFrame
+TitleLabel.BackgroundTransparency = 1
+TitleLabel.Position = UDim2.new(0, 0, 0, 5)
+TitleLabel.Size = UDim2.new(1, 0, 0, 30)
+TitleLabel.Font = Enum.Font.GothamBold
+TitleLabel.Text = "NoClip Menu"
+TitleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+TitleLabel.TextSize = 16
+
+-- Кнопка переключения
+ToggleButton.Name = "ToggleButton"
+ToggleButton.Parent = MainFrame
+ToggleButton.BackgroundColor3 = Color3.fromRGB(200, 50, 50) -- Изначально красная (выкл)
+ToggleButton.Position = UDim2.new(0.1, 0, 0.4, 0)
+ToggleButton.Size = UDim2.new(0.8, 0, 0, 45)
+ToggleButton.Font = Enum.Font.Gotham
+ToggleButton.Text = "NoClip: OFF"
+ToggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+ToggleButton.TextSize = 14
+
+UICorner_Button.CornerRadius = UDim.new(0, 8)
+UICorner_Button.Parent = ToggleButton
+
+-- Логика перетаскивания меню мышкой
+local dragging, dragInput, dragStart, startPos
+
+local function update(input)
+    local delta = input.Position - dragStart
+    MainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+end
+
+MainFrame.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = true
+        dragStart = input.Position
+        startPos = MainFrame.Position
+        
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then
+                dragging = false
+            end
+        end)
+    end
+end)
+
+MainFrame.InputChanged:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+        dragInput = input
+    end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+    if input == dragInput and dragging then
+        update(input)
+    end
+end)
+
+-- Логика работы самого NoClip
 RunService.Stepped:Connect(function()
-    if NoclipOn and LocalPlayer.Character then
+    if noclipEnabled and LocalPlayer.Character then
         for _, part in pairs(LocalPlayer.Character:GetDescendants()) do
-            if part:IsA("BasePart") then
+            if part:IsA("BasePart") and part.CanCollide then
                 part.CanCollide = false
             end
         end
     end
 end)
 
--- Переключатель
-Button.MouseButton1Click:Connect(function()
-    NoclipOn = not NoclipOn
-    if NoclipOn then
-        Button.Text = "NOCLIP: ON"
-        Button.BackgroundColor3 = Color3.fromRGB(50, 200, 50)
+-- Обработка нажатия на кнопку
+ToggleButton.MouseButton1Click:Connect(function()
+    noclipEnabled = not noclipEnabled
+    if noclipEnabled then
+        ToggleButton.Text = "NoClip: ON"
+        ToggleButton.BackgroundColor3 = Color3.fromRGB(50, 200, 50) -- Зелёная (вкл)
     else
-        Button.Text = "NOCLIP: OFF"
-        Button.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+        ToggleButton.Text = "NoClip: OFF"
+        ToggleButton.BackgroundColor3 = Color3.fromRGB(200, 50, 50) -- Красная (выкл)
     end
 end)
